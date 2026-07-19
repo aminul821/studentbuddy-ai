@@ -1,6 +1,7 @@
 import os
 import time
 import streamlit as st
+from rag import retrieve_context
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -188,28 +189,74 @@ def execute_generation_with_retry(client, contents, config, model_name, max_retr
 
 def generate_student_response(client, chat_history, new_user_message):
     """
-    Formats conversation context and executes generation with proactive fallback management.
+    Generates a response using Gemini with optional RAG context.
     """
     try:
+        # Retrieve relevant context from the knowledge base
+        context = retrieve_context(new_user_message)
+
         formatted_contents = []
+
+        # Add previous conversation (skip initial welcome message)
         for i, msg in enumerate(chat_history):
             if i == 0 and msg["role"] == "assistant":
                 continue
+
             formatted_contents.append(
                 types.Content(
                     role="user" if msg["role"] == "user" else "model",
                     parts=[types.Part.from_text(text=msg["content"])]
                 )
             )
-            formatted_contents.append(
-                types.Content(
-                    role="user" if msg["role"] == "user" else "model",
-                    parts=[types.Part.from_text(text=msg["content"])]
-                )
-            )
-            
+
+        # Build prompt depending on whether context exists
+        if context and context.strip():
+
+            prompt = f"""
+You are StudentBuddy AI, an intelligent student support assistant.
+
+You have retrieved the following information from the StudentBuddy Knowledge Base.
+
+=========================
+Knowledge Base
+=========================
+{context}
+
+=========================
+Student Question
+=========================
+{new_user_message}
+
+Instructions:
+
+- Use the retrieved knowledge as the primary source.
+- If the knowledge is incomplete, supplement it with your own knowledge.
+- If the knowledge and your own knowledge conflict, clearly mention both.
+- Mention the knowledge base only if it is relevant.
+- Give a friendly, well-structured answer using headings and bullet points where appropriate.
+"""
+
+        else:
+
+            prompt = f"""
+You are StudentBuddy AI.
+
+No relevant information was found in the knowledge base.
+
+Answer the student's question using your own knowledge.
+
+Student Question:
+{new_user_message}
+
+Provide a friendly, accurate and well-structured answer.
+"""
+
+        # Add current prompt
         formatted_contents.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=new_user_message)])
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)]
+            )
         )
 
         config = types.GenerateContentConfig(
@@ -217,27 +264,45 @@ def generate_student_response(client, chat_history, new_user_message):
             temperature=0.7,
         )
 
-        # Step 1: Attempt generation with Primary Model (with Retries)
+        # Primary Model
         try:
-            response = execute_generation_with_retry(client, formatted_contents, config, PRIMARY_MODEL)
-            if response and response.text:
-                return response.text
-        except APIError as e:
-            if e.code != 503:
-                raise e  # If it's not a server overload, skip directly to the outer exception block
-            
-            # Step 2: Fallback to alternative model line if Primary continues to fail
-            response = execute_generation_with_retry(client, formatted_contents, config, FALLBACK_MODEL)
+            response = execute_generation_with_retry(
+                client,
+                formatted_contents,
+                config,
+                PRIMARY_MODEL
+            )
+
             if response and response.text:
                 return response.text
 
-        return "⚠️ Server limits reached. The model endpoints are overloaded. Please click 'Clear Chat' or wait a few moments before trying again."
+        except APIError as e:
+
+            if e.code != 503:
+                raise e
+
+            # Fallback Model
+            response = execute_generation_with_retry(
+                client,
+                formatted_contents,
+                config,
+                FALLBACK_MODEL
+            )
+
+            if response and response.text:
+                return response.text
+
+        return (
+            "⚠️ The AI service is currently busy. "
+            "Please try again in a few moments."
+        )
 
     except APIError as e:
         st.error(f"❌ Gemini API Error: {e.message}")
         return None
+
     except Exception as e:
-        st.error(f"❌ An unexpected error occurred: {str(e)}")
+        st.error(f"❌ Unexpected Error: {str(e)}")
         return None
 
 # UI COMPONENTS (SIDEBAR & MAIN)

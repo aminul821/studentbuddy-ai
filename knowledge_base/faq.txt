@@ -1,0 +1,5 @@
+CGPA
+
+CGPA stands for Cumulative Grade Point Average.
+
+It is calculated using the grade points earned in all semesters.
