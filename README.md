@@ -5,6 +5,11 @@
 StudentBuddy AI is an AI-powered chatbot designed to assist students with academic queries, placement preparation, internships, career guidance, scholarships, resume building, and university-related information. It combines the capabilities of Google's Gemini API with a Retrieval-Augmented Generation (RAG) pipeline to provide context-aware and accurate responses from a custom knowledge base.
 
 ---
+## 🌐 Live Demo
+
+🔗 **Deployed Application:** [https://your-app.streamlit.app](https://studentbuddy-ai.streamlit.app/)
+
+---
 
 ## 🚀 Features
 
