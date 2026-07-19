@@ -154,7 +154,17 @@ Additional documents can easily be added by placing new `.txt` files inside the 
 
 # 📸 Application Preview
 
-> Add screenshots of your application here.
+Initial Interface-
+> <img width="1916" height="1017" alt="Screenshot 2026-07-19 172422" src="https://github.com/user-attachments/assets/533a57aa-6510-4851-a484-fc04324b9097" />
+
+Welcome Message-
+><img width="1917" height="896" alt="Screenshot 2026-07-19 172457" src="https://github.com/user-attachments/assets/2dae6ace-0180-48ea-9e76-4ff66cab0c5c" />
+
+Output Response-
+><img width="1478" height="725" alt="Screenshot 2026-07-19 172608" src="https://github.com/user-attachments/assets/93684a59-53a0-4f6a-b10d-f930b36c39af" />
+
+
+
 
 Example:
 
