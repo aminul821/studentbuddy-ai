@@ -162,7 +162,7 @@ def get_gemini_client():
     """Initializes and returns the official Google GenAI Client securely."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        return None
+        return api_key = st.secrets["GEMINI_API_KEY"]
     return genai.Client(api_key=api_key)
 
 # DEFENSIVE GEMINI API INTERACTION LOGIC
