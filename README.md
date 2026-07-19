@@ -165,15 +165,6 @@ Output Response-
 
 
 
-
-Example:
-
-```
-images/
-    home.png
-    chat.png
-```
-
 ---
 
 # 🔮 Future Enhancements
