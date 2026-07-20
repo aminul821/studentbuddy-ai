@@ -7,7 +7,7 @@ StudentBuddy AI is an AI-powered chatbot designed to assist students with academ
 ---
 ## 🌐 Live Demo
 
-🔗 **Deployed Application:** [https://your-app.streamlit.app](https://studentbuddy-ai.streamlit.app/)
+🔗 **Deployed Application:** https://studentbuddy-ai.streamlit.app/
 
 ---
 
@@ -73,7 +73,7 @@ StudentBuddy-AI/
 ## 1. Clone Repository
 
 ```bash
-git clone https://github.com/<your-username>/studentbuddy-ai.git
+git clone https://github.com/shreshth2906/studentbuddy-ai
 ```
 
 ---
