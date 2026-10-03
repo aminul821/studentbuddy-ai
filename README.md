@@ -17,7 +17,7 @@ StudentBuddy AI is an AI-powered chatbot designed to assist students with academ
 - 🧠 Powered by Google Gemini API
 - 📚 Retrieval-Augmented Generation (RAG)
 - 🔍 Semantic search using ChromaDB
-- 🤖 Sentence Transformer embeddings (`all-MiniLM-L6-v2`)
+- 🤖 `all-MiniLM-L6-v2` embeddings via ONNX Runtime (no PyTorch needed)
 - 📄 Custom knowledge base support
 - 💼 Placement preparation guidance
 - 🚀 Internship guidance
@@ -42,7 +42,7 @@ StudentBuddy AI is an AI-powered chatbot designed to assist students with academ
 | Streamlit | Web Application |
 | Google Gemini API | Large Language Model |
 | ChromaDB | Vector Database |
-| Sentence Transformers | Text Embeddings |
+| ONNX Runtime (via ChromaDB) | Text Embeddings |
 | python-dotenv | Environment Variables |
 
 ---
@@ -159,8 +159,8 @@ The app reads the key from the environment / `.env` first and falls back to Stre
 | `PRIMARY_MODEL` | `app.py` | `gemini-3.1-flash-lite` | Gemini model used for responses |
 | `FALLBACK_MODEL` | `app.py` | `gemini-3.5-flash` | Model used when the primary model is overloaded |
 | `MAX_HISTORY_MESSAGES` | `app.py` | `20` | Previous chat messages sent with each request |
-| `MODEL_NAME` | `rag.py` | `all-MiniLM-L6-v2` | Sentence Transformer embedding model |
-| `SIMILARITY_THRESHOLD` | `rag.py` | `0.65` | Maximum distance for a chunk to count as relevant (lower = stricter) |
+| `MODEL_NAME` | `rag.py` | `all-MiniLM-L6-v2-onnx` | Embedding model label (changing it rebuilds the vector store) |
+| `SIMILARITY_THRESHOLD` | `rag.py` | `1.0` | Maximum distance for a chunk to count as relevant (lower = stricter) |
 | `N_RESULTS` | `rag.py` | `5` | Number of chunks retrieved per question |
 
 ---
@@ -241,6 +241,7 @@ Output Response-
 | "The AI service is currently busy" | Both Gemini models are overloaded. Wait a moment and try again. |
 | Model not found error | Change `PRIMARY_MODEL` / `FALLBACK_MODEL` in `app.py` to models available for your API key. |
 | Answers ignore the knowledge base | Lower distances mean closer matches; try raising `SIMILARITY_THRESHOLD` slightly, or add more detailed content to `knowledge_base/`. |
+| App is very slow on WSL | Keep the project in the Linux filesystem (e.g. `~/studentbuddy-ai`), not under `/mnt/c/...`. |
 | Stale or broken search results | Delete the `vector_store/` folder and restart; it is rebuilt from `knowledge_base/`. |
 
 ---

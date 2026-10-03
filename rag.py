@@ -3,7 +3,7 @@ import hashlib
 import logging
 import chromadb
 
-from sentence_transformers import SentenceTransformer
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
 logger = logging.getLogger(__name__)
 
@@ -16,17 +16,18 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 KNOWLEDGE_DIR = os.path.join(BASE_DIR, "knowledge_base")
 VECTOR_DB_DIR = os.path.join(BASE_DIR, "vector_store")
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+# all-MiniLM-L6-v2 run through ONNX Runtime (bundled with ChromaDB), so no PyTorch is needed
+MODEL_NAME = "all-MiniLM-L6-v2-onnx"
 
 COLLECTION_NAME = "studentbuddy"
 
 # Maximum distance for a chunk to count as relevant (lower = stricter)
-SIMILARITY_THRESHOLD = 0.65
+SIMILARITY_THRESHOLD = 1.0
 
 N_RESULTS = 5
 
 # Loaded once per process: Python caches imported modules across Streamlit reruns
-embedding_model = SentenceTransformer(MODEL_NAME)
+embedding_model = ONNXMiniLM_L6_V2()
 
 client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
 
@@ -146,7 +147,7 @@ def build_vector_store():
     if documents:
 
         # Encode and insert all chunks in one batch
-        embeddings = embedding_model.encode(documents).tolist()
+        embeddings = embedding_model(documents)
 
         collection.add(
             ids=[str(i) for i in range(len(documents))],
@@ -173,7 +174,7 @@ def retrieve_context(question):
     if count == 0:
         return None
 
-    embedding = embedding_model.encode(question).tolist()
+    embedding = embedding_model([question])[0]
 
     results = collection.query(
         query_embeddings=[embedding],

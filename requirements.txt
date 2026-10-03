@@ -2,6 +2,5 @@ streamlit>=1.40,<2
 google-genai>=1.0,<3
 python-dotenv>=1.0,<2
 
+# Includes ONNX Runtime and the all-MiniLM-L6-v2 embedding model (no PyTorch needed)
 chromadb>=1.0,<2
-# Pulls in torch, transformers and numpy
-sentence-transformers>=3.0,<7
