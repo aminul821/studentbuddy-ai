@@ -1,43 +1,62 @@
 import os
 import hashlib
+import logging
 import chromadb
 
 from sentence_transformers import SentenceTransformer
-from streamlit import context
+
+logger = logging.getLogger(__name__)
 
 # ==========================================
 # CONFIGURATION
 # ==========================================
 
-KNOWLEDGE_DIR = "knowledge_base"
-VECTOR_DB_DIR = "vector_store"
+# Resolve paths relative to this file so the app works from any working directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+KNOWLEDGE_DIR = os.path.join(BASE_DIR, "knowledge_base")
+VECTOR_DB_DIR = os.path.join(BASE_DIR, "vector_store")
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 
+COLLECTION_NAME = "studentbuddy"
+
+# Maximum distance for a chunk to count as relevant (lower = stricter)
+SIMILARITY_THRESHOLD = 0.65
+
+N_RESULTS = 5
+
+# Loaded once per process: Python caches imported modules across Streamlit reruns
 embedding_model = SentenceTransformer(MODEL_NAME)
 
 client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
 
-COLLECTION_NAME = "studentbuddy"
-
 collection = client.get_or_create_collection(COLLECTION_NAME)
 
 # ==========================================
-# FILE HASH
+# FILE HELPERS
 # ==========================================
+
+def list_knowledge_files():
+
+    return sorted(
+        f for f in os.listdir(KNOWLEDGE_DIR)
+        if f.endswith(".txt")
+    )
+
 
 def calculate_hash():
 
     md5 = hashlib.md5()
 
-    for filename in sorted(os.listdir(KNOWLEDGE_DIR)):
+    # Changing the embedding model must also trigger a rebuild
+    md5.update(MODEL_NAME.encode("utf-8"))
 
-        path = os.path.join(KNOWLEDGE_DIR, filename)
+    for filename in list_knowledge_files():
 
-        if not filename.endswith(".txt"):
-            continue
+        # Include the filename so renames also trigger a rebuild
+        md5.update(filename.encode("utf-8"))
 
-        with open(path, "rb") as f:
+        with open(os.path.join(KNOWLEDGE_DIR, filename), "rb") as f:
             md5.update(f.read())
 
     return md5.hexdigest()
@@ -68,11 +87,12 @@ def chunk_text(text, chunk_size=400):
 
         else:
 
-            chunks.append(current.strip())
+            if current.strip():
+                chunks.append(current.strip())
 
             current = para
 
-    if current:
+    if current.strip():
 
         chunks.append(current.strip())
 
@@ -85,13 +105,16 @@ def chunk_text(text, chunk_size=400):
 
 def build_vector_store():
 
+    global collection
+
     current_hash = calculate_hash()
 
     hash_file = os.path.join(VECTOR_DB_DIR, "hash.txt")
 
-    if os.path.exists(hash_file):
+    if os.path.exists(hash_file) and collection.count() > 0:
 
-        old_hash = open(hash_file).read().strip()
+        with open(hash_file) as f:
+            old_hash = f.read().strip()
 
         if old_hash == current_hash:
 
@@ -99,53 +122,40 @@ def build_vector_store():
 
     try:
         client.delete_collection(COLLECTION_NAME)
-    except:
+    except Exception:
+        # Collection may not exist yet
         pass
-
-    global collection
 
     collection = client.get_or_create_collection(COLLECTION_NAME)
 
-    doc_id = 0
+    documents = []
+    metadatas = []
 
-    for filename in os.listdir(KNOWLEDGE_DIR):
+    for filename in list_knowledge_files():
 
-        if not filename.endswith(".txt"):
-            continue
-
-        path = os.path.join(KNOWLEDGE_DIR, filename)
-
-        with open(path, encoding="utf-8") as f:
+        with open(os.path.join(KNOWLEDGE_DIR, filename), encoding="utf-8") as f:
 
             text = f.read()
 
-        chunks = chunk_text(text)
+        for chunk in chunk_text(text):
 
-        for chunk in chunks:
+            documents.append(chunk)
 
-            embedding = embedding_model.encode(chunk).tolist()
+            metadatas.append({"source": filename})
 
-            collection.add(
+    if documents:
 
-                ids=[str(doc_id)],
+        # Encode and insert all chunks in one batch
+        embeddings = embedding_model.encode(documents).tolist()
 
-                documents=[chunk],
+        collection.add(
+            ids=[str(i) for i in range(len(documents))],
+            documents=documents,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
 
-                embeddings=[embedding],
-
-                metadatas=[
-
-                    {
-
-                        "source": filename
-
-                    }
-
-                ]
-
-            )
-
-            doc_id += 1
+    os.makedirs(VECTOR_DB_DIR, exist_ok=True)
 
     with open(hash_file, "w") as f:
 
@@ -158,11 +168,16 @@ def build_vector_store():
 
 def retrieve_context(question):
 
+    count = collection.count()
+
+    if count == 0:
+        return None
+
     embedding = embedding_model.encode(question).tolist()
 
     results = collection.query(
         query_embeddings=[embedding],
-        n_results=5,
+        n_results=min(N_RESULTS, count),
         include=["documents", "metadatas", "distances"]
     )
 
@@ -172,13 +187,9 @@ def retrieve_context(question):
 
     context = []
 
-    SIMILARITY_THRESHOLD = 0.65
-
     for doc, source, distance in zip(docs, sources, distances):
 
-        print(
-            f"{source['source']} | Distance: {distance:.3f}"
-        )
+        logger.debug("%s | Distance: %.3f", source["source"], distance)
 
         if distance <= SIMILARITY_THRESHOLD:
 
@@ -189,7 +200,7 @@ def retrieve_context(question):
 """
             )
 
-    if len(context) == 0:
+    if not context:
         return None
 
     return "\n\n".join(context)

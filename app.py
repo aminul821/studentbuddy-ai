@@ -28,6 +28,11 @@ Avoid making up facts. If unsure, clearly mention uncertainty."""
 PRIMARY_MODEL = "gemini-3.1-flash-lite"
 FALLBACK_MODEL = "gemini-3.5-flash"
 
+# Number of previous chat messages sent to Gemini with each request
+MAX_HISTORY_MESSAGES = 20
+
+WELCOME_MESSAGE = "👋 Hi there! I'm StudentBuddy AI. How can I help you with your academics, placements, internships, or career goals today?"
+
 # INITIALIZATION FUNCTIONS
 def init_page_config():
     """Configures Streamlit page titles and layouts."""
@@ -45,7 +50,9 @@ def load_custom_css():
 
         #MainMenu {visibility:hidden;}
         footer {visibility:hidden;}
-        header {visibility:hidden;}
+        /* Keep the header (it holds the sidebar toggle on mobile), hide only its toolbar */
+        header {background:transparent;}
+        div[data-testid="stToolbar"] {visibility:hidden;}
 
         /* ---------- Main App ---------- */
 
@@ -85,15 +92,6 @@ def load_custom_css():
         }
 
         /* ---------- Cards ---------- */
-
-        .info-card{
-            background:white;
-            border-radius:16px;
-            padding:18px;
-            border:1px solid #E5E7EB;
-            margin-bottom:15px;
-            box-shadow:0 4px 12px rgba(0,0,0,.05);
-        }
 
         /* ---------- Footer ---------- */
 
@@ -154,18 +152,34 @@ def init_session_state():
     """Initializes chat history and setup markers if not present."""
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "👋 Hi there! I'm StudentBuddy AI. How can I help you with your academics, placements, internships, or career goals today?"}
+            {"role": "assistant", "content": WELCOME_MESSAGE}
         ]
+
+def get_api_key():
+    """Reads the Gemini key from the environment / .env, falling back to Streamlit secrets."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        return api_key
+    try:
+        return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        # No secrets.toml or key not present
+        return None
 
 @st.cache_resource
 def get_gemini_client():
     """Initializes and returns the official Google GenAI Client securely."""
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_api_key()
     if not api_key:
-        return st.secrets["GEMINI_API_KEY"]
+        return None
     return genai.Client(api_key=api_key)
 
 # DEFENSIVE GEMINI API INTERACTION LOGIC
+def is_overloaded_error(e):
+    """True for 503 / high-demand errors that are worth retrying or falling back on."""
+    message = str(e.message).lower()
+    return e.code == 503 or "demand" in message or "overloaded" in message
+
 def execute_generation_with_retry(client, contents, config, model_name, max_retries=3):
     """Executes call with exponential backoff to absorb 503 high-demand spikes."""
     delay = 1.0
@@ -178,8 +192,7 @@ def execute_generation_with_retry(client, contents, config, model_name, max_retr
             )
             return response
         except APIError as e:
-            # Check for HTTP 503 Service Unavailable / Overloaded
-            if e.code == 503 or "demand" in str(e.message).lower() or "overloaded" in str(e.message).lower():
+            if is_overloaded_error(e):
                 if attempt < max_retries - 1:
                     time.sleep(delay)
                     delay *= 2  # Double the backoff sleep timing window
@@ -197,10 +210,19 @@ def generate_student_response(client, chat_history, new_user_message):
 
         formatted_contents = []
 
-        # Add previous conversation (skip initial welcome message)
-        for i, msg in enumerate(chat_history):
-            if i == 0 and msg["role"] == "assistant":
-                continue
+        # Skip the initial welcome message
+        if chat_history and chat_history[0]["role"] == "assistant":
+            chat_history = chat_history[1:]
+
+        # Only send recent turns to keep token usage bounded
+        chat_history = chat_history[-MAX_HISTORY_MESSAGES:]
+
+        # Gemini expects the conversation to start with a user turn
+        while chat_history and chat_history[0]["role"] != "user":
+            chat_history = chat_history[1:]
+
+        # Add previous conversation
+        for msg in chat_history:
 
             formatted_contents.append(
                 types.Content(
@@ -264,6 +286,11 @@ Provide a friendly, accurate and well-structured answer.
             temperature=0.7,
         )
 
+        busy_message = (
+            "⚠️ The AI service is currently busy. "
+            "Please try again in a few moments."
+        )
+
         # Primary Model
         try:
             response = execute_generation_with_retry(
@@ -278,24 +305,29 @@ Provide a friendly, accurate and well-structured answer.
 
         except APIError as e:
 
-            if e.code != 503:
+            if not is_overloaded_error(e):
                 raise e
 
             # Fallback Model
-            response = execute_generation_with_retry(
-                client,
-                formatted_contents,
-                config,
-                FALLBACK_MODEL
-            )
+            try:
+                response = execute_generation_with_retry(
+                    client,
+                    formatted_contents,
+                    config,
+                    FALLBACK_MODEL
+                )
 
-            if response and response.text:
-                return response.text
+                if response and response.text:
+                    return response.text
 
-        return (
-            "⚠️ The AI service is currently busy. "
-            "Please try again in a few moments."
-        )
+            except APIError as fallback_error:
+
+                if not is_overloaded_error(fallback_error):
+                    raise fallback_error
+
+                return busy_message
+
+        return busy_message
 
     except APIError as e:
         st.error(f"❌ Gemini API Error: {e.message}")
@@ -329,7 +361,7 @@ def render_sidebar():
             st.session_state.messages = [
                 {
                     "role":"assistant",
-                    "content":"👋 Welcome! How can I help you today?"
+                    "content":WELCOME_MESSAGE
                 }
             ]
             st.rerun()
@@ -409,7 +441,12 @@ def render_chat_interface(client):
         with st.chat_message(message["role"],avatar=avatar):
             st.markdown(message["content"])
 
-    if user_query := st.chat_input("Ask about placement prep, scholarships, exams..."):
+    # Typed input, or a question picked from the sidebar's Quick Questions
+    user_query = st.chat_input("Ask about placement prep, scholarships, exams...")
+    if not user_query:
+        user_query = st.session_state.pop("example_prompt", None)
+
+    if user_query:
         st.session_state.messages.append({"role": "user", "content": user_query})
         with st.chat_message("user"):
             st.markdown(user_query)

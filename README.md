@@ -114,11 +114,13 @@ pip install -r requirements.txt
 
 ## 5. Configure Environment Variables
 
-Create a `.env` file.
+Copy `.env.example` to `.env` and add your key.
 
 ```env
 GEMINI_API_KEY=YOUR_API_KEY
 ```
+
+When deploying on Streamlit Community Cloud, add `GEMINI_API_KEY` under **App settings → Secrets** instead.
 
 ---
 
