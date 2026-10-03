@@ -58,6 +58,8 @@ StudentBuddy-AI/
 ├── README.md
 ├── .gitignore
 ├── .env.example
+├── .streamlit/
+│   └── config.toml        # Light theme, file watcher off
 │
 ├── knowledge_base/
 │   ├── academics.txt

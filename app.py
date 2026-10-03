@@ -118,6 +118,7 @@ def load_custom_css():
     
         .info-card{
             background:white;
+            color:#0F172A;
             padding:18px;
             border-radius:18px;
             margin-bottom:15px;

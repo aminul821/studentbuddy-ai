@@ -1,0 +1,9 @@
+[theme]
+# The custom CSS uses white cards and a light sidebar, so keep the light theme
+base = "light"
+
+[server]
+# Streamlit's file watcher scans every imported module; on transformers this
+# triggers hundreds of harmless "No module named 'torchvision'" tracebacks.
+# Restart the app manually after editing code.
+fileWatcherType = "none"
